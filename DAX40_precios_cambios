@@ -1,0 +1,149 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jun 28 11:50:02 2023
+
+@author: Lucia
+"""
+
+import numpy as np
+import locale
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+warnings.filterwarnings("ignore")
+
+# %% Tratamiento de los datos. Importamos el csv creando una ruta con la dirección de la carpeta de Propiedades
+
+# Si al definir una variable ponemos _ delante no nos aparece en Variables
+
+_path = "C://Users//maryc//OneDrive//Escritorio//Tesis - PhD//Datos_históricos_DAX_17_22.csv"
+
+# Leemos el csv con pandas
+data = pd.read_csv(_path)
+
+# De forma recursiva cambiar el formato de la fecha a Y-m-d
+
+data["Fecha"] = pd.to_datetime(data["Fecha"], dayfirst=True)
+
+# Ordenamos las fecha de 2017 - 2022
+
+data = data.sort_values(
+    ["Fecha", "Último", "Apertura", "Máximo", "Mínimo", "Vol.", "% var."])
+
+# Establecemos la fecha como índice
+
+data.set_index("Fecha", inplace=True)
+
+# Eliminamos los puntos de los números y reemplazamos la coma por punto, primero
+# importamos el formato europeo y después con el for reemplazamos cada línea
+
+locale.setlocale(locale.LC_ALL, 'nl_NL')
+
+for i in range(len(data)):
+    data["Último"][i] = locale.atof(data["Último"][i])
+    data["Apertura"][i] = locale.atof(data["Apertura"][i])
+    data["Máximo"][i] = locale.atof(data["Máximo"][i])
+    data["Mínimo"][i] = locale.atof(data["Mínimo"][i])
+    data["Vol."][i] = data["Vol."][i].replace("M", "")
+    data["Vol."][i] = locale.atof(data["Vol."][i])
+    data["% var."][i] = data["% var."][i].replace("%", "")
+    data["% var."][i] = locale.atof(data["% var."][i])
+
+# Convertimos los valores de las columnas en float (número)
+data["Último"] = data["Último"].astype("float64")
+data["Apertura"] = data["Apertura"].astype("float64")
+data["Máximo"] = data["Máximo"].astype("float64")
+data["Mínimo"] = data["Mínimo"].astype("float64")
+data["Vol."] = data["Vol."].astype("float64")
+data["% var."] = data["% var."].astype("float64")
+
+# Cambiamos el nombre de Vol. para añadirle la M
+
+data.rename(columns={"Vol.": "Vol. M"}, inplace=True)
+
+# %% Cálculo de valores y separación por años
+
+# Separamos por años los valores de data
+
+data_17 = data[data.index < "2018"]  # data_17 = data[data.index == "2017"]
+data_18 = data[(data.index < "2019") & (data.index > "2017-12-31")]
+data_19 = data[(data.index < "2020") & (data.index > "2018-12-31")]
+data_20 = data[(data.index < "2021") & (data.index > "2019-12-31")]
+data_21 = data[(data.index < "2022") & (data.index > "2020-12-31")]
+data_22 = data[data.index > "2021-12-31"]
+
+# Añadimos cada una de las variables de años a un diccionario
+
+data_dic = {"2017": data_17,
+            "2018": data_18,
+            "2019": data_19,
+            "2020": data_20,
+            "2021": data_21,
+            "2022": data_22, }
+
+# Realizamos el cálculo de Cambio de precio débil y Cambio de precio abrupto;
+# y creamos los .xlsx ya que en .csv la información aparece en una solo linea
+
+for j in data_dic.keys():
+    data_dic[j]["Cambio de precio débil %"] = 100 * (np.log(
+        data_dic[j]["Último"])-np.log(data_dic[j]["Último"].shift(1)))
+    data_dic[j]["Cambio de precio abrupto %"] = 100 * (data_dic[j]["Cambio de precio débil %"] /
+                                                       data_dic[j]["Cambio de precio débil %"].shift(1))
+    data_dic[j].to_excel("DAX_CambioPrecio" + str(j)+".xlsx",)
+
+# %% Definición de la función de graficación de los valores
+
+
+def Graf_Precio_Trim(Precio_In, Titulo_1, Y_label):
+    """
+    Descripción: función encargada de representar los valores de los precios 
+    por trimestres frente a la fecha.
+    Parameters
+    ----------
+    Precio_In : TYPE: string nombre de la columna
+        Introducimos el precio a representar en la gráfica entre comillas.
+    Titulo_1 : TYPE: string
+        Título del gráfico entre comillas.
+    Y_label : TYPE: string
+        Título del eje y entre comillas.
+
+    Returns
+    -------
+    None.
+
+    """
+    try: # Iteración del código, si hay errores salta a Except
+        for j in data_dic.keys():
+            plt.Figure()
+            plt.plot(data_dic[j].index[data_dic[j].index < str(j) + "-04-01"],
+                     data_dic[j][Precio_In][data_dic[j].index < str(j) + "-04-01"],
+                     label="1 Trimestre")
+    
+            plt.plot(data_dic[j].index[(data_dic[j].index >= str(j) + "-04-01") & (data_dic[j].index < str(j) + "-07-01")],
+                     data_dic[j][Precio_In][(data_dic[j].index >= str(
+                         j) + "-04-01") & (data_dic[j].index < str(j) + "-07-01")],
+                     label="2 Trimestre")
+    
+            plt.plot(data_dic[j].index[(data_dic[j].index >= str(j) + "-07-01") & (data_dic[j].index < str(j) + "-10-01")],
+                     data_dic[j][Precio_In][(data_dic[j].index >= str(
+                         j) + "-07-01") & (data_dic[j].index < str(j) + "-10-01")],
+                     label="3 Trimestre")
+    
+            plt.plot(data_dic[j].index[data_dic[j].index >= str(j) + "-10-01"], data_dic[j][Precio_In]
+                     [data_dic[j].index >= str(j) + "-10-01"], label="4 Trimestre")
+    
+            plt.title(Titulo_1 + str(j))
+            plt.xlabel("Fecha (Y-m-d)")
+            plt.ylabel(Y_label)
+            plt.legend()
+            plt.grid()
+            sns.set_context("paper")
+            plt.show()
+    except Exception as e: # En las iteraciones si hay un error, sale por pantalla
+        print(e)
+# %% Llamadas a la función Graf_Precio_Trim(Precio_In, Titulo_1, Y_label)
+
+Graf_Precio_Trim("Último", "Cotización DAX", "Precio de cierre del activo (puntos)")
+Graf_Precio_Trim("Cambio de precio débil %", "Cambios de precio débil", "Precio débil (%)")
+Graf_Precio_Trim("Cambio de precio abrupto %", "Cambios de precio abrupto", "Precio abrupto (%)
